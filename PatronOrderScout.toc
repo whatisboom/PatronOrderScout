@@ -4,9 +4,5 @@
 ## Author: whatisboom
 ## Version: @project-version@
 ## RequiredDeps: BoomForge
-## SavedVariables: PatronOrderScoutDB
 
 Core.lua
-Scanner.lua
-Format.lua
-Broker.lua
