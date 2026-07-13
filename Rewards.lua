@@ -107,28 +107,54 @@ local function ShowRewardIcons(cell, npcOrderRewards)
   end
 end
 
+-- Hides any reward icons already on `cell` (leaving Blizzard's own RewardIcon
+-- shown/hidden exactly as its own Populate already decided). Used when a
+-- pooled cell is repopulated for an order with no rewards, so icons/tooltip
+-- data left over from whatever order previously occupied this cell don't
+-- linger on the new row.
+local function HideRewardIcons(cell)
+  if cell.patronOrderScoutIcons then
+    for _, iconFrame in ipairs(cell.patronOrderScoutIcons) do
+      iconFrame:Hide()
+    end
+  end
+end
+
 -- Refreshes a cell already displaying `orderID`, if any, with newly-arrived
--- reward data (see CRAFTINGORDERS_UPDATE_REWARDS handling in Core.lua).
+-- reward data (see CRAFTINGORDERS_UPDATE_REWARDS handling in Core.lua). Only
+-- applies the update if the cell we have on record is still showing this
+-- orderID -- pooled cells get reused for other orders as the list scrolls, so
+-- a late event for an order whose cell has since moved on must be ignored.
 function Rewards.OnRewardsUpdated(orderIDString, npcOrderRewards)
   local cell = activeCells[orderIDString]
-  if cell and npcOrderRewards and #npcOrderRewards > 0 then
+  if cell and cell.patronOrderScoutOrderID == orderIDString and npcOrderRewards and #npcOrderRewards > 0 then
+    activeCells[orderIDString] = nil
     ShowRewardIcons(cell, npcOrderRewards)
   end
 end
+
+local installed = false
 
 -- Hooks Blizzard's Tip-column Populate so Patron orders with resolved rewards
 -- show real icons instead of the generic "has rewards" chest icon. Wrapped in
 -- pcall so a future WoW UI change to this internal can't break Blizzard's own
 -- tip-column rendering -- only our own icon logic is at risk, not the game's UI.
 function Rewards.Install()
+  if installed then return end
+  installed = true
+
   hooksecurefunc(ProfessionsCrafterTableCellCommissionMixin, "Populate", function(cell, rowData)
     local ok, err = pcall(function()
       local order = rowData.option
-      activeCells[tostring(order.orderID)] = cell
+      cell.patronOrderScoutOrderID = tostring(order.orderID)
 
       local npcOrderRewards = order.npcOrderRewards
       if npcOrderRewards and #npcOrderRewards > 0 then
+        activeCells[cell.patronOrderScoutOrderID] = nil
         ShowRewardIcons(cell, npcOrderRewards)
+      else
+        HideRewardIcons(cell)
+        activeCells[cell.patronOrderScoutOrderID] = cell
       end
     end)
     if not ok then
