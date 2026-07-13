@@ -19,5 +19,51 @@ local function loadModule(path, ns)
   chunk("PatronOrderScout", ns)
 end
 
+-- Shim the WoW globals Rewards.resolve calls, the same way BoomForge's own
+-- tests/run.lua shims LibStub -- these don't exist outside the WoW client.
+_G.C_CurrencyInfo = {
+  GetCurrencyInfo = function(currencyType)
+    if currencyType == 3008 then
+      return { name = "Knowledge Points", iconFileID = 133784 }
+    end
+    return nil
+  end,
+}
+_G.C_Item = {
+  GetItemInfo = function(itemLink)
+    if itemLink == "item:12345" then
+      -- 18 return values per C_Item.GetItemInfo; quality is index 3, icon/texture is index 10.
+      return "Crystallized Augment Rune", itemLink, 4, 70, 1, "Reagent", "", 1, "", 135884,
+        0, 0, 0, 0, 0, 0, false, ""
+    end
+    return nil
+  end,
+  GetItemQualityColor = function(quality)
+    if quality == 4 then return 0.64, 0.21, 0.93, "|cffa335ee" end -- epic purple
+    return 1, 1, 1, "|cffffffff"
+  end,
+}
+
+local ns = {}
+loadModule("Rewards.lua", ns)
+local Rewards = ns.Rewards
+
+-- ---- Rewards.resolve ----
+do
+  local resolved = Rewards.resolve({ currencyType = 3008, count = 5 })
+  eq(resolved.kind, "currency", "currency reward resolves kind as currency")
+  eq(resolved.name, "Knowledge Points", "currency reward resolves its name via C_CurrencyInfo")
+  eq(resolved.icon, 133784, "currency reward resolves its icon via C_CurrencyInfo")
+  eq(resolved.borderColor[1], 0.5, "currency reward gets a neutral gray border (no item quality)")
+end
+
+do
+  local resolved = Rewards.resolve({ itemLink = "item:12345", count = 1 })
+  eq(resolved.kind, "item", "item reward resolves kind as item")
+  eq(resolved.name, "Crystallized Augment Rune", "item reward resolves its name via C_Item.GetItemInfo")
+  eq(resolved.icon, 135884, "item reward resolves its icon via C_Item.GetItemInfo (10th return value)")
+  eq(resolved.borderColor[1], 0.64, "item reward's border color comes from C_Item.GetItemQualityColor(quality)")
+end
+
 print(("\n%d passed, %d failed"):format(passed, failed))
 if failed > 0 then os.exit(1) end
