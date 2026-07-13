@@ -146,7 +146,11 @@ function Rewards.Install()
   hooksecurefunc(ProfessionsCrafterTableCellCommissionMixin, "Populate", function(cell, rowData)
     local ok, err = pcall(function()
       local order = rowData.option
-      cell.patronOrderScoutOrderID = tostring(order.orderID)
+      local newOrderID = tostring(order.orderID)
+      if cell.patronOrderScoutOrderID and cell.patronOrderScoutOrderID ~= newOrderID then
+        activeCells[cell.patronOrderScoutOrderID] = nil
+      end
+      cell.patronOrderScoutOrderID = newOrderID
 
       local npcOrderRewards = order.npcOrderRewards
       if npcOrderRewards and #npcOrderRewards > 0 then
