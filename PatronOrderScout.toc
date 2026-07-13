@@ -4,6 +4,7 @@
 ## Author: whatisboom
 ## Version: @project-version@
 ## RequiredDeps: BoomForge
+## X-Curse-Project-ID: 1609297
 
 Rewards.lua
 Core.lua

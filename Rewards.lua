@@ -60,18 +60,11 @@ local function GetOrCreateIcons(cell)
     local iconFrame = CreateFrame("Frame", nil, cell)
     iconFrame:SetSize(16, 16)
     if i == 1 then
-      iconFrame:SetPoint("RIGHT", cell.TipMoneyDisplayFrame, "LEFT", -5, 0)
+      iconFrame:SetPoint("RIGHT", cell.TipMoneyDisplayFrame, "LEFT", -10, 0)
     else
-      iconFrame:SetPoint("RIGHT", icons[i - 1], "LEFT", -2, 0)
+      iconFrame:SetPoint("RIGHT", icons[i - 1], "LEFT", -5, 0)
     end
     iconFrame:EnableMouse(true)
-
-    -- Border is drawn BACKGROUND (behind ARTWORK) and 1px larger on each side,
-    -- so it reads as a colored ring around the icon.
-    iconFrame.border = iconFrame:CreateTexture(nil, "BACKGROUND")
-    iconFrame.border:SetColorTexture(1, 1, 1, 1)
-    iconFrame.border:SetPoint("TOPLEFT", iconFrame, "TOPLEFT", -1, 1)
-    iconFrame.border:SetPoint("BOTTOMRIGHT", iconFrame, "BOTTOMRIGHT", 1, -1)
 
     iconFrame.icon = iconFrame:CreateTexture(nil, "ARTWORK")
     iconFrame.icon:SetAllPoints()
@@ -98,7 +91,6 @@ local function ShowRewardIcons(cell, npcOrderRewards)
     if raw then
       local resolved = Rewards.resolve(raw)
       iconFrame.icon:SetTexture(resolved.icon)
-      iconFrame.border:SetColorTexture(resolved.borderColor[1], resolved.borderColor[2], resolved.borderColor[3], 1)
       iconFrame.reward = raw
       iconFrame:Show()
     else
