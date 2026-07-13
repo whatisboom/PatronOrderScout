@@ -1,0 +1,18 @@
+# CurseForge / BigWigs packager manifest.
+# No vendored libraries -- all Ace3/LibDataBroker/LibDBIcon libs come from the
+# required BoomForge dependency, so there are no externals to fetch here.
+
+package-as: PatronOrderScout
+
+# Use the hand-written CHANGELOG.md (Keep a Changelog: Added/Changed/Fixed) as the
+# release notes. Without this, the packager generates notes from `git log`, which
+# embeds commit author name/email -- keep that PII out of the published changelog.
+manual-changelog:
+  filename: CHANGELOG.md
+  markup-type: markdown
+
+# Dev-only files that should not ship in the packaged addon.
+# (Dotfiles like .pkgmeta / .gitignore are auto-pruned by the packager.)
+ignore:
+  - tests
+  - CLAUDE.md

@@ -1,0 +1,12 @@
+## Interface: 120007
+## Title: Patron Order Scout
+## Notes: See patron crafting order rewards (Knowledge Points, Augment Runes, etc.) without opening each order
+## Author: whatisboom
+## Version: @project-version@
+## RequiredDeps: BoomForge
+## SavedVariables: PatronOrderScoutDB
+
+Core.lua
+Scanner.lua
+Format.lua
+Broker.lua
