@@ -15,4 +15,5 @@ manual-changelog:
 # (Dotfiles like .pkgmeta / .gitignore are auto-pruned by the packager.)
 ignore:
   - tests
+  - docs
   - CLAUDE.md

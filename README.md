@@ -8,19 +8,19 @@ See what a patron (NPC) crafting order rewards — Knowledge Points, Augment Run
 
 ## What it does
 
-Requests your available patron crafting orders (`C_CraftingOrders`) and resolves each order's reward payload (currency rewards like Knowledge Points, item rewards like Augment Runes) via `C_CurrencyInfo`/`C_Item` — no need to click into an order to see what it pays out. Results show up as a LibDataBroker data source (works with any LDB display addon), with a tooltip listing each visible order and its rewards.
+On the Professions window's Patron tab, Blizzard's own order table already shows a small "has rewards" chest icon in the Tip column when an order grants a reward, with reward details only visible on hover. Patron Order Scout replaces that chest icon with the actual reward icon(s) — resolved via `C_CurrencyInfo`/`C_Item` — so you can see at a glance what an order pays out (Knowledge Points, an Augment Rune, Artisan's Mettle, etc.) without hovering or opening the order. Hovering an icon still shows its normal native tooltip.
 
-Filtering by reward category (`db.profile.filters`, e.g. only show orders with Knowledge Points) is data-driven off the resolved reward name — see `Format.lua`.
+This is done entirely in place, inside Blizzard's existing Patron tab UI — no separate window, no minimap icon, no extra addon surface.
 
 ## Tests
 
-Pure-Lua logic (`Format.lua`) is covered by `tests/run.lua`:
+Pure-Lua reward-resolution logic (`Rewards.lua`'s `Rewards.resolve`) is covered by `tests/run.lua`:
 
 ```
 lua tests/run.lua
 ```
 
-`Scanner.lua`/`Core.lua`/`Broker.lua` call live WoW API and are verified manually in-game instead.
+The rest of `Rewards.lua` (the Tip-column hook, icon frames, tooltips) and `Core.lua` call live WoW API and Blizzard UI internals that don't exist outside the client, so they're verified manually in-game instead.
 
 ## License
 

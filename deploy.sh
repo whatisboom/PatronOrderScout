@@ -15,6 +15,7 @@ rsync -a --delete \
   --exclude='.pkgmeta' \
   --exclude='.DS_Store' \
   --exclude='tests/' \
+  --exclude='docs/' \
   --exclude='CLAUDE.md' \
   --exclude='deploy.sh' \
   "$SRC" "$DEST"
