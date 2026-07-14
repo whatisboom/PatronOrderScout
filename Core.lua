@@ -6,7 +6,7 @@ ns.addon = PatronOrderScout
 function PatronOrderScout:OnInitialize()
   local entry = BoomForge:RegisterPlugin(self, {
     name = "PatronOrderScout",
-    version = "0.2.0",
+    version = C_AddOns.GetAddOnMetadata(ADDON, "Version"),
   })
   ns.log = entry.services.log
 end
