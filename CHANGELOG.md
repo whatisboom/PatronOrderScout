@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-07-14
+
+### Fixed
+- Reward icons that never appeared for some orders on first opening the Patron tab (most visibly Knowledge Points and Artisan Consortium payouts). Root cause: the underlying item data for some rewards wasn't cached client-side yet when the row first rendered, so its icon silently came back blank — the reward itself was always valid, just its icon couldn't be drawn yet. Now retried automatically once that data finishes loading (`GET_ITEM_INFO_RECEIVED`/`CURRENCY_DISPLAY_UPDATE`), no more needing to switch tabs away and back to see it.
+- The addon's hook into Blizzard's UI could install a moment too late to catch the very first render of the Patron tab in a session, since the Blizzard addon it depends on loads on demand; now force-loaded proactively at login instead of waiting.
+
 ## [1.0.0] - 2026-07-13
 
 ### Added

@@ -5,7 +5,10 @@ ns.Rewards = Rewards
 -- Resolves one raw CraftingOrderRewardInfo ({ itemLink?, currencyType?, count })
 -- into a display-ready shape. currencyType rewards get a plain/neutral border
 -- (currencies have no quality); itemLink rewards get a real quality-colored
--- border via C_Item.GetItemQualityColor.
+-- border via C_Item.GetItemQualityColor. `icon` can come back nil if the
+-- underlying currency/item data isn't cached client-side yet (e.g. a currency
+-- the player hasn't "discovered" yet) -- callers must handle that, not assume
+-- a resolved reward always has a usable icon.
 function Rewards.resolve(raw)
   if raw.currencyType then
     local info = C_CurrencyInfo.GetCurrencyInfo(raw.currencyType)
@@ -30,8 +33,13 @@ end
 local MAX_REWARD_ICONS = 2 -- NPC_CRAFTING_ORDER_NUM_SUPPORTED_REWARDS
 
 -- orderID (as a string -- BigUInteger values aren't safe to use as table keys
--- directly, see Core.lua) -> the cell frame currently showing that order's Tip
--- column, so a late-arriving CRAFTINGORDERS_UPDATE_REWARDS event can refresh it.
+-- directly) -> { cell = <frame>, npcOrderRewards = <list, or nil> } for any
+-- row still waiting on something: `npcOrderRewards == nil` means we're still
+-- waiting on the reward *list itself* (RequestPendingRewards's job, a fresh
+-- C_CraftingOrders.RequestCrafterOrders() call); a non-nil `npcOrderRewards`
+-- with the entry still present means the reward list arrived but at least one
+-- reward's icon didn't resolve yet (RetryIconResolution's job, no new request
+-- needed -- just re-run Rewards.resolve once the underlying data is cached).
 local activeCells = {}
 
 local function OnIconEnter(iconFrame)
@@ -81,11 +89,14 @@ local function GetOrCreateIcons(cell)
 end
 
 -- Shows up to MAX_REWARD_ICONS real reward icons on `cell`, replacing
--- Blizzard's generic chest icon.
+-- Blizzard's generic chest icon. Returns `complete` -- false if any reward's
+-- icon came back nil (data not cached client-side yet), so the caller knows
+-- to keep this cell pending rather than treat it as done.
 local function ShowRewardIcons(cell, npcOrderRewards)
   local icons = GetOrCreateIcons(cell)
   cell.RewardIcon:Hide()
 
+  local complete = true
   for i, iconFrame in ipairs(icons) do
     local raw = npcOrderRewards[i]
     if raw then
@@ -93,10 +104,14 @@ local function ShowRewardIcons(cell, npcOrderRewards)
       iconFrame.icon:SetTexture(resolved.icon)
       iconFrame.reward = raw
       iconFrame:Show()
+      if not resolved.icon then
+        complete = false
+      end
     else
       iconFrame:Hide()
     end
   end
+  return complete
 end
 
 -- Hides any reward icons already on `cell` (leaving Blizzard's own RewardIcon
@@ -118,10 +133,90 @@ end
 -- orderID -- pooled cells get reused for other orders as the list scrolls, so
 -- a late event for an order whose cell has since moved on must be ignored.
 function Rewards.OnRewardsUpdated(orderIDString, npcOrderRewards)
-  local cell = activeCells[orderIDString]
+  local pending = activeCells[orderIDString]
+  local cell = pending and pending.cell
   if cell and cell.patronOrderScoutOrderID == orderIDString and npcOrderRewards and #npcOrderRewards > 0 then
-    activeCells[orderIDString] = nil
-    ShowRewardIcons(cell, npcOrderRewards)
+    if ShowRewardIcons(cell, npcOrderRewards) then
+      activeCells[orderIDString] = nil
+    else
+      activeCells[orderIDString] = { cell = cell, npcOrderRewards = npcOrderRewards }
+    end
+  end
+end
+
+local pollTicker = nil
+
+-- Backstop for rows whose reward *list* never arrives via
+-- CRAFTINGORDERS_UPDATE_REWARDS (that event isn't reliably fired for orders
+-- sitting in a background list rather than the one currently open).
+-- C_CraftingOrders.GetCrafterOrders() only reflects whatever the last actual
+-- request returned -- it's not a live cache -- so a passive re-read never sees
+-- newly-resolved reward data. An explicit RequestCrafterOrders() call is what
+-- actually asks the server for a fresh snapshot (this is what switching tabs
+-- away and back was observed to trigger). Unlike the reactive polling that
+-- originally broke the built-in Patron tab count (see Core.lua/git history),
+-- this is time-driven, not triggered by CRAFTINGORDERS_UPDATE_ORDER_COUNT, so
+-- it can't chain into a request storm -- it fires at most once per interval
+-- while any row is still waiting, and stops itself once nothing is.
+--
+-- Only entries still missing their reward *list* (npcOrderRewards == nil) need
+-- this -- entries only waiting on icon resolution are RetryIconResolution's job.
+local function RequestPendingRewards()
+  local anyMissingList = false
+  for _, pending in pairs(activeCells) do
+    if not pending.npcOrderRewards then anyMissingList = true; break end
+  end
+  if not anyMissingList then
+    if pollTicker then
+      pollTicker:Cancel()
+      pollTicker = nil
+    end
+    return
+  end
+
+  C_CraftingOrders.RequestCrafterOrders({
+    orderType = Enum.CraftingOrderType.Npc,
+    searchFavorites = false,
+    initialNonPublicSearch = false,
+    primarySort = { sortType = Enum.CraftingOrderSortType.TimeRemaining, reversed = false },
+    secondarySort = { sortType = Enum.CraftingOrderSortType.TimeRemaining, reversed = false },
+    forCrafter = true,
+    offset = 0,
+    callback = function()
+      local rewardsByOrderID = {}
+      for _, order in ipairs(C_CraftingOrders.GetCrafterOrders() or {}) do
+        if order.npcOrderRewards and #order.npcOrderRewards > 0 then
+          rewardsByOrderID[tostring(order.orderID)] = order.npcOrderRewards
+        end
+      end
+
+      for orderIDString, pending in pairs(activeCells) do
+        local npcOrderRewards = rewardsByOrderID[orderIDString]
+        if npcOrderRewards and pending.cell.patronOrderScoutOrderID == orderIDString then
+          if ShowRewardIcons(pending.cell, npcOrderRewards) then
+            activeCells[orderIDString] = nil
+          else
+            activeCells[orderIDString] = { cell = pending.cell, npcOrderRewards = npcOrderRewards }
+          end
+        end
+      end
+    end,
+  })
+end
+
+-- Backstop for rows whose reward *list* is present but an icon didn't resolve
+-- (e.g. a currency the player hasn't "discovered" client-side yet -- its data
+-- loads shortly after, signaled by CURRENCY_DISPLAY_UPDATE, see Core.lua). No
+-- new request needed here, just re-run resolution against the cached list.
+function Rewards.RetryIconResolution()
+  if next(activeCells) == nil then return end
+
+  for orderIDString, pending in pairs(activeCells) do
+    if pending.npcOrderRewards and pending.cell.patronOrderScoutOrderID == orderIDString then
+      if ShowRewardIcons(pending.cell, pending.npcOrderRewards) then
+        activeCells[orderIDString] = nil
+      end
+    end
   end
 end
 
@@ -146,11 +241,17 @@ function Rewards.Install()
 
       local npcOrderRewards = order.npcOrderRewards
       if npcOrderRewards and #npcOrderRewards > 0 then
-        activeCells[cell.patronOrderScoutOrderID] = nil
-        ShowRewardIcons(cell, npcOrderRewards)
+        if ShowRewardIcons(cell, npcOrderRewards) then
+          activeCells[newOrderID] = nil
+        else
+          activeCells[newOrderID] = { cell = cell, npcOrderRewards = npcOrderRewards }
+        end
       else
         HideRewardIcons(cell)
-        activeCells[cell.patronOrderScoutOrderID] = cell
+        activeCells[newOrderID] = { cell = cell, npcOrderRewards = nil }
+        if not pollTicker then
+          pollTicker = C_Timer.NewTicker(3, RequestPendingRewards)
+        end
       end
     end)
     if not ok then
