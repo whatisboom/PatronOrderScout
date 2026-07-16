@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- The Patron tab's Reagents column (retitled "Missing") now shows real icons for the reagents still needed to fulfill an order, in place of Blizzard's generic "All"/"Some"/"None" text — resolved by diffing the recipe's full required-reagent list against what the patron already provided. Orders where the patron covered everything now read "All Provided" explicitly. Hovering the column still shows Blizzard's own provided-reagents tooltip, with a "Missing" section appended listing what's still needed.
+
 ## [1.0.1] - 2026-07-14
 
 ### Fixed

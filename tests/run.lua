@@ -44,9 +44,20 @@ _G.C_Item = {
   end,
 }
 
+-- Reagents.ComputeMissing's only WoW-API dependency is this Blizzard-provided
+-- predicate (ProfessionsUtil.lua:128, returns slot.required) -- shimmed the
+-- same way C_CurrencyInfo/C_Item are, so the diff logic can run outside the
+-- client.
+_G.ProfessionsUtil = {
+  IsReagentSlotRequired = function(slot) return slot.required end,
+}
+
 local ns = {}
+loadModule("Resolve.lua", ns)
 loadModule("Rewards.lua", ns)
 local Rewards = ns.Rewards
+loadModule("Reagents.lua", ns)
+local Reagents = ns.Reagents
 
 -- ---- Rewards.resolve ----
 do
@@ -63,6 +74,58 @@ do
   eq(resolved.name, "Crystallized Augment Rune", "item reward resolves its name via C_Item.GetItemInfo")
   eq(resolved.icon, 135884, "item reward resolves its icon via C_Item.GetItemInfo (10th return value)")
   eq(resolved.borderColor[1], 0.64, "item reward's border color comes from C_Item.GetItemQualityColor(quality)")
+end
+
+-- ---- Reagents.ComputeMissing ----
+do
+  -- Two required slots, patron provided neither -- both come back missing,
+  -- sorted by slotIndex.
+  local schematic = {
+    { slotIndex = 2, required = true, reagents = { { itemID = 222 } } },
+    { slotIndex = 1, required = true, reagents = { { itemID = 111 } } },
+  }
+  local missing = Reagents.ComputeMissing(schematic, {})
+  eq(#missing, 2, "both required slots missing when nothing provided")
+  eq(missing[1].itemID, 111, "missing list is sorted by slotIndex")
+  eq(missing[2].itemID, 222, "missing list is sorted by slotIndex")
+end
+
+do
+  -- Patron provided slot 1; slot 2 remains missing.
+  local schematic = {
+    { slotIndex = 1, required = true, reagents = { { itemID = 111 } } },
+    { slotIndex = 2, required = true, reagents = { { itemID = 222 } } },
+  }
+  local provided = { { slotIndex = 1, source = 0, isBasicReagent = true } }
+  local missing = Reagents.ComputeMissing(schematic, provided)
+  eq(#missing, 1, "only the unprovided required slot is missing")
+  eq(missing[1].itemID, 222, "the missing slot's reagent is slot 2's")
+end
+
+do
+  -- Optional/finishing slots (required == false) never count as missing.
+  local schematic = {
+    { slotIndex = 1, required = true, reagents = { { itemID = 111 } } },
+    { slotIndex = 2, required = false, reagents = { { itemID = 999 } } },
+  }
+  local missing = Reagents.ComputeMissing(schematic, {})
+  eq(#missing, 1, "optional/finishing slots are excluded from the missing list")
+  eq(missing[1].itemID, 111, "only the required slot's reagent is reported missing")
+end
+
+do
+  -- A currency-backed slot resolves via its currencyID field, not itemID.
+  local schematic = {
+    { slotIndex = 1, required = true, reagents = { { currencyID = 3008 } } },
+  }
+  local missing = Reagents.ComputeMissing(schematic, {})
+  eq(#missing, 1, "currency-backed required slot is missing when unprovided")
+  eq(missing[1].currencyID, 3008, "missing entry carries currencyID, not itemID")
+end
+
+do
+  local missing = Reagents.ComputeMissing({}, {})
+  eq(#missing, 0, "no reagent slots at all yields an empty missing list")
 end
 
 print(("\n%d passed, %d failed"):format(passed, failed))

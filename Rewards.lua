@@ -3,31 +3,15 @@ local Rewards = {}
 ns.Rewards = Rewards
 
 -- Resolves one raw CraftingOrderRewardInfo ({ itemLink?, currencyType?, count })
--- into a display-ready shape. currencyType rewards get a plain/neutral border
--- (currencies have no quality); itemLink rewards get a real quality-colored
--- border via C_Item.GetItemQualityColor. `icon` can come back nil if the
--- underlying currency/item data isn't cached client-side yet (e.g. a currency
--- the player hasn't "discovered" yet) -- callers must handle that, not assume
--- a resolved reward always has a usable icon.
+-- into a display-ready shape via the shared Resolve module. `icon` can come
+-- back nil if the underlying currency/item data isn't cached client-side yet
+-- (e.g. a currency the player hasn't "discovered" yet) -- callers must handle
+-- that, not assume a resolved reward always has a usable icon.
 function Rewards.resolve(raw)
   if raw.currencyType then
-    local info = C_CurrencyInfo.GetCurrencyInfo(raw.currencyType)
-    return {
-      kind = "currency",
-      name = (info and info.name) or ("Currency " .. raw.currencyType),
-      icon = info and info.iconFileID,
-      borderColor = { 0.5, 0.5, 0.5 },
-    }
+    return ns.Resolve.currency(raw.currencyType)
   end
-
-  local name, _, quality, _, _, _, _, _, _, icon = C_Item.GetItemInfo(raw.itemLink)
-  local r, g, b = C_Item.GetItemQualityColor(quality or 1)
-  return {
-    kind = "item",
-    name = name or raw.itemLink or "Unknown Item",
-    icon = icon,
-    borderColor = { r, g, b },
-  }
+  return ns.Resolve.item(raw.itemLink)
 end
 
 local MAX_REWARD_ICONS = 2 -- NPC_CRAFTING_ORDER_NUM_SUPPORTED_REWARDS
@@ -61,31 +45,8 @@ end
 -- reused across rows as the list scrolls) the icon frames we show in place of
 -- Blizzard's chest icon, anchored exactly where that chest icon sits.
 local function GetOrCreateIcons(cell)
-  if cell.patronOrderScoutIcons then return cell.patronOrderScoutIcons end
-
-  local icons = {}
-  for i = 1, MAX_REWARD_ICONS do
-    local iconFrame = CreateFrame("Frame", nil, cell)
-    iconFrame:SetSize(16, 16)
-    if i == 1 then
-      iconFrame:SetPoint("RIGHT", cell.TipMoneyDisplayFrame, "LEFT", -10, 0)
-    else
-      iconFrame:SetPoint("RIGHT", icons[i - 1], "LEFT", -5, 0)
-    end
-    iconFrame:EnableMouse(true)
-
-    iconFrame.icon = iconFrame:CreateTexture(nil, "ARTWORK")
-    iconFrame.icon:SetAllPoints()
-
-    iconFrame:SetScript("OnEnter", OnIconEnter)
-    iconFrame:SetScript("OnLeave", OnIconLeave)
-
-    iconFrame:Hide()
-    icons[i] = iconFrame
-  end
-
-  cell.patronOrderScoutIcons = icons
-  return icons
+  return ns.IconRow.GetOrCreate(cell, "patronOrderScoutIcons", MAX_REWARD_ICONS,
+    cell.TipMoneyDisplayFrame, "LEFT", -10, OnIconEnter, OnIconLeave)
 end
 
 -- Shows up to MAX_REWARD_ICONS real reward icons on `cell`, replacing
@@ -120,11 +81,7 @@ end
 -- data left over from whatever order previously occupied this cell don't
 -- linger on the new row.
 local function HideRewardIcons(cell)
-  if cell.patronOrderScoutIcons then
-    for _, iconFrame in ipairs(cell.patronOrderScoutIcons) do
-      iconFrame:Hide()
-    end
-  end
+  ns.IconRow.HideAll(cell, "patronOrderScoutIcons")
 end
 
 -- Refreshes a cell already displaying `orderID`, if any, with newly-arrived

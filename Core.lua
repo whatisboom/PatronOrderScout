@@ -11,6 +11,19 @@ function PatronOrderScout:OnInitialize()
   ns.log = entry.services.log
 end
 
+-- The Reagents column's stock text is driven by these three globals
+-- (PROFESSIONS_COLUMN_HEADER_REAGENTS for the column header,
+-- PROFESSIONS_COLUMN_REAGENTS_ALL/_PARTIAL/_NONE for the cell text Populate
+-- picks between). Confirmed single-consumer globals -- overriding them here
+-- carries no cross-UI side effects. Retitling "All" explicitly to "All
+-- Provided" (rather than leaving the cell blank once Reagents.lua takes over
+-- Some/None rendering) means a bug in the icon logic can never silently
+-- produce an unlabeled cell. Must run before the Patron Orders table is first
+-- built, so this executes at file-load time (addon load, well before the
+-- player can open the Professions UI) rather than inside OnEnable.
+PROFESSIONS_COLUMN_HEADER_REAGENTS = "Missing"
+PROFESSIONS_COLUMN_REAGENTS_ALL = "All Provided"
+
 function PatronOrderScout:OnEnable()
   self:RegisterEvent("CRAFTINGORDERS_UPDATE_REWARDS", "OnRewardsUpdated")
   -- A reward's icon can come back nil if its underlying currency/item data
@@ -18,22 +31,26 @@ function PatronOrderScout:OnEnable()
   -- GET_ITEM_INFO_RECEIVED fire once that data loads. Confirmed via diagnostic
   -- logging that item-type rewards (raw.itemLink with an empty "[]" name) are
   -- the case actually seen in practice, not currency discovery -- keeping both
-  -- handlers since either can happen and retrying is cheap/idempotent.
+  -- handlers since either can happen and retrying is cheap/idempotent. The
+  -- same underlying data-not-cached-yet gap applies to missing-reagent icons,
+  -- so both handlers retry Reagents.lua too.
   self:RegisterEvent("CURRENCY_DISPLAY_UPDATE", "OnRewardDataLoaded")
   self:RegisterEvent("GET_ITEM_INFO_RECEIVED", "OnRewardDataLoaded")
 
-  -- ProfessionsCrafterTableCellCommissionMixin (Rewards.Install's hook target)
-  -- lives in Blizzard_ProfessionsTemplates, which is load-on-demand -- it isn't
-  -- loaded at login unless something forces it. Force-load it now rather than
+  -- ProfessionsCrafterTableCellCommissionMixin/ProfessionsCrafterTableCellReagentsMixin
+  -- (Rewards.Install's and Reagents.Install's hook targets) live in
+  -- Blizzard_ProfessionsTemplates, which is load-on-demand -- it isn't loaded
+  -- at login unless something forces it. Force-load it now rather than
   -- waiting for the player to open the Professions UI: waiting passively meant
-  -- our hook could install a moment too late to catch the very first Populate
+  -- our hooks could install a moment too late to catch the very first Populate
   -- pass on the Patron tab (hooksecurefunc only affects calls made after it's
-  -- installed), so those rows' reward icons never appeared until something
-  -- else happened to re-trigger Populate (e.g. switching tabs away and back).
+  -- installed), so those rows' icons never appeared until something else
+  -- happened to re-trigger Populate (e.g. switching tabs away and back).
   C_AddOns.LoadAddOn("Blizzard_ProfessionsTemplates")
 
   if ProfessionsCrafterTableCellCommissionMixin then
     ns.Rewards.Install()
+    ns.Reagents.Install()
   else
     -- Load-on-demand fell back (e.g. the user disabled that Blizzard addon) --
     -- install once it does load, same as the previous behavior.
@@ -45,6 +62,7 @@ function PatronOrderScout:OnAddonLoaded(event, addonName)
   if addonName ~= "Blizzard_ProfessionsTemplates" then return end
   self:UnregisterEvent("ADDON_LOADED")
   ns.Rewards.Install()
+  ns.Reagents.Install()
 end
 
 -- npcOrderRewards can arrive after a row's Tip column has already been
@@ -55,4 +73,5 @@ end
 
 function PatronOrderScout:OnRewardDataLoaded()
   ns.Rewards.RetryIconResolution()
+  ns.Reagents.RetryIconResolution()
 end
