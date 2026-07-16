@@ -7,8 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-07-16
+
 ### Added
-- The Patron tab's Reagents column (retitled "Missing") now shows real icons for the reagents still needed to fulfill an order, in place of Blizzard's generic "All"/"Some"/"None" text — resolved by diffing the recipe's full required-reagent list against what the patron already provided. Orders where the patron covered everything now read "All Provided" explicitly. Hovering the column still shows Blizzard's own provided-reagents tooltip, with a "Missing" section appended listing what's still needed.
+- The Patron tab's Reagents column (retitled "Missing") now shows real icons for the reagents still needed to fulfill an order, in place of Blizzard's generic "All"/"Some"/"None" text. Missing reagents are resolved by diffing the recipe's full required-reagent list against what the patron already provided. Orders the patron covered completely now read "All Provided" explicitly instead of showing an empty cell. Hovering the column shows a tooltip broken into "Provided" and "Missing" sections, so both halves of the picture are visible at once.
+
+### Fixed
+- Reward icons in the Tip column would visibly shift position from row to row depending on how many digits the tip's gold/silver amount had, since they were anchored relative to the money display instead of a fixed point. Now anchored to a fixed position at the left edge of the column.
 
 ## [1.0.1] - 2026-07-14
 

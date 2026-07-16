@@ -43,10 +43,13 @@ end
 
 -- Lazily creates (once per pooled cell frame, since TableBuilder cells are
 -- reused across rows as the list scrolls) the icon frames we show in place of
--- Blizzard's chest icon, anchored exactly where that chest icon sits.
+-- Blizzard's chest icon. Anchored to the cell's own LEFT edge (growing
+-- rightward) rather than to TipMoneyDisplayFrame -- that frame's LEFT edge
+-- shifts with the money value's digit count (e.g. "119" vs "78"), which made
+-- icon position visibly jitter row-to-row when anchored relative to it.
 local function GetOrCreateIcons(cell)
   return ns.IconRow.GetOrCreate(cell, "patronOrderScoutIcons", MAX_REWARD_ICONS,
-    cell.TipMoneyDisplayFrame, "LEFT", -10, OnIconEnter, OnIconLeave)
+    cell, "LEFT", 0, "right", OnIconEnter, OnIconLeave)
 end
 
 -- Shows up to MAX_REWARD_ICONS real reward icons on `cell`, replacing

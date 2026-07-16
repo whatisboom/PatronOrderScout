@@ -66,6 +66,21 @@ local function OnIconLeave()
   GameTooltip:Hide()
 end
 
+-- Adds a gold section-header line ("Provided"/"Missing") to the tooltip.
+-- GameTooltip:AddLine renders whichever line lands first on the tooltip in
+-- Blizzard's larger header font automatically, and every line after that in
+-- the normal body font -- since either "Provided" or "Missing" can end up
+-- being that first line depending on the order (e.g. "Missing" is first when
+-- nothing was provided), both headers force the same (body) font explicitly
+-- so they always match each other regardless of which one lands first.
+local function AddSectionHeader(text)
+  GameTooltip:AddLine(text, 1, 0.82, 0)
+  local fontString = _G["GameTooltipTextLeft" .. GameTooltip:NumLines()]
+  if fontString then
+    fontString:SetFontObject(GameTooltipText)
+  end
+end
+
 -- Lazily creates the icon frames we show in place of the cell's stock
 -- "All"/"Some"/"None" text. Unlike Rewards' Commission cell (which has a
 -- dedicated RewardIcon texture child to anchor against), the Reagents cell
@@ -73,7 +88,7 @@ end
 -- own RIGHT edge instead of a sibling frame's LEFT edge.
 local function GetOrCreateIcons(cell)
   return ns.IconRow.GetOrCreate(cell, "patronOrderScoutMissingIcons", MAX_MISSING_ICONS,
-    cell, "RIGHT", -4, OnIconEnter, OnIconLeave)
+    cell, "RIGHT", -4, "left", OnIconEnter, OnIconLeave)
 end
 
 -- Shows icons for `missing` on `cell`, replacing the stock text. Returns
@@ -103,12 +118,21 @@ end
 
 -- Hides any missing-reagent icons on `cell` and restores its stock text
 -- (already "All Provided" via the PROFESSIONS_COLUMN_REAGENTS_ALL override in
--- Core.lua). Used whenever nothing is missing, and when a pooled cell is
--- repopulated for an order we can't compute a missing list for (e.g. the
--- recipe schematic lookup came back nil) -- falling back to Blizzard's own
--- text rather than silently showing an empty cell.
+-- Core.lua). Right-justified and inset by the same -4px the missing-reagent
+-- icons use (see GetOrCreateIcons) so the text's right edge lines up exactly
+-- with where those icons sit when this same cell shows icons for a different
+-- order -- the template's default setAllPoints=true has no inset, which left
+-- the text a few pixels further right than the icons. Used whenever nothing
+-- is missing, and when a pooled cell is repopulated for an order we can't
+-- compute a missing list for (e.g. the recipe schematic lookup came back
+-- nil) -- falling back to Blizzard's own text rather than silently showing
+-- an empty cell.
 local function HideMissingIcons(cell)
   ns.IconRow.HideAll(cell, "patronOrderScoutMissingIcons")
+  cell.Text:ClearAllPoints()
+  cell.Text:SetPoint("TOPLEFT", cell, "TOPLEFT", 0, 0)
+  cell.Text:SetPoint("BOTTOMRIGHT", cell, "BOTTOMRIGHT", -4, 0)
+  cell.Text:SetJustifyH("RIGHT")
   cell.Text:Show()
 end
 
@@ -130,11 +154,13 @@ end
 
 local installed = false
 
--- Hooks Blizzard's Reagents-column Populate/OnEnter so Patron orders show
--- real missing-reagent icons instead of plain "All"/"Some"/"None" text, with
--- a tooltip breakdown of what's still needed. Wrapped in pcall so a future
--- WoW UI change to these internals can't break Blizzard's own rendering --
--- only our own icon logic is at risk, not the game's UI.
+-- Hooks Blizzard's Reagents-column Populate (hooksecurefunc) and replaces its
+-- OnEnter (see comment below for why) so Patron orders show real
+-- missing-reagent icons instead of plain "All"/"Some"/"None" text, with a
+-- tooltip broken into "Provided:"/"Missing" sections. Populate's hook is
+-- pcall-wrapped so a future WoW UI change to that internal can't break
+-- Blizzard's own rendering -- only our own icon logic is at risk, not the
+-- game's UI.
 function Reagents.Install()
   if installed then return end
   installed = true
@@ -147,6 +173,7 @@ function Reagents.Install()
         activeCells[cell.patronOrderScoutOrderID] = nil
       end
       cell.patronOrderScoutOrderID = newOrderID
+      cell.patronOrderScoutHasProvided = order.reagents ~= nil and #order.reagents > 0
 
       local schematic = C_TradeSkillUI.GetRecipeSchematic(order.spellID, order.isRecraft)
       if not schematic then
@@ -176,21 +203,66 @@ function Reagents.Install()
     end
   end)
 
-  hooksecurefunc(ProfessionsCrafterTableCellReagentsMixin, "OnEnter", function(cell)
+  -- OnEnter needs a line prepended BEFORE Blizzard's own tooltip content
+  -- (the provided-reagents icon row), which hooksecurefunc can't do -- it
+  -- only ever runs after the hooked function returns. So this replaces
+  -- OnEnter outright rather than hooking it, unlike every other Blizzard
+  -- function this addon touches.
+  --
+  -- That alone isn't enough, though: Blizzard's original OnEnter calls
+  -- GameTooltip:SetOwner(self, "ANCHOR_RIGHT") itself before inserting its
+  -- icon frame -- and SetOwner clears any lines already on the tooltip, even
+  -- when called again with the same owner/anchor (confirmed empirically --
+  -- our "Provided:" line was silently wiped by Blizzard's own SetOwner
+  -- call). There's no GameTooltip API to insert a line before content that
+  -- already exists, so the only way to get our header above Blizzard's icon
+  -- row -- short of reimplementing its ~50 lines of reagent-icon-pool logic
+  -- ourselves -- is to make that second SetOwner call a no-op for the single
+  -- owner (this cell) it'll be called with, for the duration of Blizzard's
+  -- own handler only. Scoped narrowly and always restored immediately after,
+  -- whether or not Blizzard's handler errors.
+  local originalOnEnter = ProfessionsCrafterTableCellReagentsMixin.OnEnter
+  ProfessionsCrafterTableCellReagentsMixin.OnEnter = function(cell)
+    local realSetOwner = GameTooltip.SetOwner
+    local patchedSetOwner = false
+
     local ok, err = pcall(function()
+      if cell.patronOrderScoutHasProvided then
+        GameTooltip:SetOwner(cell, "ANCHOR_RIGHT")
+        AddSectionHeader("Provided")
+        GameTooltip.SetOwner = function(tooltip, owner, ...)
+          if owner == cell then return end
+          return realSetOwner(tooltip, owner, ...)
+        end
+        patchedSetOwner = true
+      end
+    end)
+    if not ok then
+      geterrorhandler()(err)
+    end
+
+    local innerOk, innerErr = pcall(originalOnEnter, cell)
+    if patchedSetOwner then
+      GameTooltip.SetOwner = realSetOwner
+    end
+    if not innerOk then
+      geterrorhandler()(innerErr)
+    end
+
+    local ok2, err2 = pcall(function()
       local missing = cell.patronOrderScoutMissing
       if not missing or #missing == 0 then return end
 
       GameTooltip:AddLine(" ")
-      GameTooltip:AddLine(PROFESSIONS_COLUMN_HEADER_REAGENTS, 1, 0.82, 0)
+      AddSectionHeader(PROFESSIONS_COLUMN_HEADER_REAGENTS)
       for _, raw in ipairs(missing) do
         local resolved = resolveReagent(raw)
         GameTooltip:AddLine("  " .. resolved.name, 1, 1, 1)
       end
       GameTooltip:Show()
     end)
-    if not ok then
-      geterrorhandler()(err)
+    if not ok2 then
+      geterrorhandler()(err2)
     end
-  end)
+  end
 end
