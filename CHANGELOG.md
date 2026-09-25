@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-09-25
+
+### Fixed
+- BoomForge is now declared as a required dependency on each CurseForge upload, so
+  the CurseForge app installs it automatically alongside PatronOrderScout.
+
 ## [1.1.0] - 2026-07-16
 
 ### Added
